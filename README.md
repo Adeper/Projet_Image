@@ -9,4 +9,4 @@ Le débruitage devra se faire dans un premier temps à partir d’approches sans
 dans un second temps en utilisant les réseaux de neurones convolutifs. Il s’agira d’évaluer et de comparer
 les résultats obtenus par différentes méthodes.
 
-Pour lancer le projet, assurez-vous de créer un environnement virtuel dans le dossier `Code` avec `python -m venv votre_env`. Ensuite, faites `pip install -r requirements.txt`.
+Pour lancer le projet, assurez-vous de créer un environnement virtuel dans le dossier `Code` avec `python -m venv votre_env`. Placez vous dans cet environnement avec `source votre_env/bin/activate`. Ensuite, faites `pip install -r requirements.txt`.
