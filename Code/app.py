@@ -4,6 +4,24 @@ from tkinter import filedialog
 import skimage as ski
 from PIL import Image, ImageTk
 import os
+import numpy as np
+
+def noise_image(image, noise_type='gaussian'):
+    image_array = np.array(image)
+
+    image_array = image_array / 255.0
+
+    match noise_type:
+        case 'gaussian':
+            image_noised = ski.util.random_noise(image_array, mode='gaussian', mean=0, var=0.01)
+        case 's&p':
+            image_noised = ski.util.random_noise(image_array, mode='s&p', amount=0.05)
+        case _:
+            image_noised = image_array
+
+    image_noised = (image_noised * 255).astype(np.uint8)
+
+    return Image.fromarray(image_noised)
 
 class Application(ctk.CTk):
     def __init__(self):
@@ -35,6 +53,9 @@ class Application(ctk.CTk):
         # Canvas pour l'image originale
         self.canvas_image = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
 
+        # Canvas pour l'image bruitée
+        self.canvas_image_bruitee = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+
         # Canvas pour l'image débruitée
         self.canvas_image_debruitee = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
 
@@ -46,6 +67,11 @@ class Application(ctk.CTk):
         self.menu_mode_detection.pack(pady=(10, 10))
 
         self.btn_debruitage = ctk.CTkButton(self.buttons_frame, text="Débruiter l'image", command=self.debruiter, hover_color="darkgrey")
+        
+        # Bouton pour bruiter l'image
+        self.btn_bruiter_image = ctk.CTkButton(self.buttons_frame, text="Bruiter l'image", command=self.bruiter_image, hover_color="darkgrey")
+        self.btn_bruiter_image.pack(pady=(10, 10))
+
 
     def mode_selectionne(self, mode):
         self.canvas_image.pack_forget()
@@ -65,8 +91,11 @@ class Application(ctk.CTk):
         self.image_path = filedialog.askopenfilename(initialdir=dossier_data)
         self.afficher_image(self.image_path, self.canvas_image)
 
-    def afficher_image(self, path, canvas):
-        image = Image.open(path)
+    def afficher_image(self, image_or_path, canvas):
+        if isinstance(image_or_path, str):
+            image = Image.open(image_or_path)
+        else:
+            image = image_or_path
         image.thumbnail((canvas.winfo_width(), canvas.winfo_height()))
         image_tk = ImageTk.PhotoImage(image)
         x = (canvas.winfo_width() - image_tk.width()) / 2
@@ -74,6 +103,18 @@ class Application(ctk.CTk):
         canvas.delete("all")
         canvas.create_image(x, y, anchor='nw', image=image_tk)
         canvas.image_tk = image_tk
+
+
+    def bruiter_image(self):
+        if self.image_path:
+            image = Image.open(self.image_path)
+            
+            noise_type = 'gaussian'
+            image_bruitee = noise_image(image, noise_type=noise_type)
+            
+            self.afficher_image(image_bruitee, self.canvas_image_bruitee)
+            self.canvas_image_bruitee.pack(side='left', padx=(20, 20), pady=(20, 20))
+            self.canvas_image_bruitee.create_text(200, 20, text="Image bruitée", font=("Arial", 12), fill="white")
 
     def debruiter():
         pass
