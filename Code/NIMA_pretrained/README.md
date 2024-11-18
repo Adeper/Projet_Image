@@ -73,7 +73,7 @@ python evaluate_<model>.py -img /chemin/vers/image.jpg -resize false
 Dans le cadre de notre projet, nous avons utilisé cette métrique pour mesurer la performance de nos différentes méthodes de débruitage.
 Voici les résultats obtenus avec le dossier d'image *example_image* :
 
-![Résultats](images/nima.png)
+![Résultats](image/nima.png)
 
 
 
