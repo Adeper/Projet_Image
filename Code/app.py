@@ -27,7 +27,7 @@ class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Débruitage d'images")
-        self.geometry("1100x720")
+        self.geometry("1550x720")
         ctk.set_appearance_mode("Dark")
         self.image_path = None
 
@@ -68,23 +68,32 @@ class Application(ctk.CTk):
 
         self.btn_debruitage = ctk.CTkButton(self.buttons_frame, text="Débruiter l'image", command=self.debruiter, hover_color="darkgrey")
         
+        # Sélection du type de bruit
+        self.bruit_type_var = tk.StringVar(value="Type de bruit")
+        self.menu_bruit = ctk.CTkOptionMenu(
+            self.buttons_frame,
+            variable=self.bruit_type_var,
+            values=["Gaussien", "Sel et poivre"],
+            command=self.on_noise_type_change
+        )
+        self.menu_bruit.pack(pady=(10, 10))
+        
         # Bouton pour bruiter l'image
         self.btn_bruiter_image = ctk.CTkButton(self.buttons_frame, text="Bruiter l'image", command=self.bruiter_image, hover_color="darkgrey")
         self.btn_bruiter_image.pack(pady=(10, 10))
 
-
-    def mode_selectionne(self, mode):
-        self.canvas_image.pack_forget()
-        self.canvas_image_debruitee.pack_forget()
-        self.label_psnr.pack_forget()
-        self.btn_debruitage.pack_forget()
-
-        # A spécialiser selon les modes
+        # Initialiser les canvas : afficher l'image originale et débruitée
         self.canvas_image.pack(side='left', padx=(20, 20), pady=(20, 20))
-        self.canvas_image.create_text(200, 20, text="Image bruitée", font=("Arial", 12), fill="white")
+        self.canvas_image.create_text(200, 20, text="Image originale", font=("Arial", 12), fill="white")
+
         self.canvas_image_debruitee.pack(side='left', padx=(20, 20), pady=(20, 20))
         self.canvas_image_debruitee.create_text(200, 20, text="Image débruitée", font=("Arial", 12), fill="white")
-        self.label_psnr.pack(pady=(5,5))
+
+        # Cacher l'image bruitée au début
+        self.canvas_image_bruitee.pack_forget()
+
+    def mode_selectionne(self, mode):
+        pass  # A vous de personnaliser cette fonction selon vos besoins
 
     def choisir_image(self):
         dossier_data = os.path.join(os.path.dirname(__file__),"../Data")
@@ -104,20 +113,42 @@ class Application(ctk.CTk):
         canvas.create_image(x, y, anchor='nw', image=image_tk)
         canvas.image_tk = image_tk
 
+    def on_noise_type_change(self, noise_type):
+        print(f"Type de bruit sélectionné : {noise_type}")
 
     def bruiter_image(self):
         if self.image_path:
+            # Charger l'image sélectionnée
             image = Image.open(self.image_path)
             
-            noise_type = 'gaussian'
-            image_bruitee = noise_image(image, noise_type=noise_type)
+            # Récupérer le type de bruit choisi
+            noise_type = self.bruit_type_var.get()
+            print(f"Type de bruit sélectionné : {noise_type}")
             
-            self.afficher_image(image_bruitee, self.canvas_image_bruitee)
-            self.canvas_image_bruitee.pack(side='left', padx=(20, 20), pady=(20, 20))
-            self.canvas_image_bruitee.create_text(200, 20, text="Image bruitée", font=("Arial", 12), fill="white")
+            # Utiliser un dictionnaire pour mapper les types de bruit
+            noise_mapping = {
+                "Gaussien": "gaussian",
+                "Sel et poivre": "s&p"
+            }
+            
+            # Obtenir le type de bruit à appliquer
+            noise_type = noise_mapping.get(noise_type)
+            
+            if noise_type:
+                # Appliquer le bruit
+                image_bruitee = noise_image(image, noise_type=noise_type)
+                
+                # Afficher l'image bruitée dans le canvas bruité
+                self.afficher_image(image_bruitee, self.canvas_image_bruitee)
+                self.canvas_image_bruitee.create_text(200, 20, text=f"Image avec bruit {noise_type}", font=("Arial", 12), fill="white")
 
-    def debruiter():
-        pass
+                # Afficher le canvas de l'image bruitée
+                self.canvas_image_bruitee.pack(side='left', padx=(20, 20), pady=(20, 20))
+            else:
+                print("Aucun type de bruit valide sélectionné.")
+    
+    def debruiter(self):
+        pass  # Vous pouvez ajouter votre logique de débruitage ici
 
 if __name__ == "__main__":
     app = Application()
