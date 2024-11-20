@@ -3,108 +3,132 @@ import tkinter as tk
 from tkinter import filedialog
 import skimage as ski
 from PIL import Image, ImageTk
-import os
 import numpy as np
-
-def noise_image(image, noise_type='gaussian'):
-    image_array = np.array(image)
-
-    image_array = image_array / 255.0
-
-    match noise_type:
-        case 'gaussian':
-            image_noised = ski.util.random_noise(image_array, mode='gaussian', mean=0, var=0.01)
-        case 's&p':
-            image_noised = ski.util.random_noise(image_array, mode='s&p', amount=0.05)
-        case _:
-            image_noised = image_array
-
-    image_noised = (image_noised * 255).astype(np.uint8)
-
-    return Image.fromarray(image_noised)
+import os
+from utils import noise_image_pil
+from methods import median_denoise
 
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Débruitage d'images")
-        self.geometry("1550x720")
+        self.geometry("1920x1080")
         ctk.set_appearance_mode("Dark")
         self.image_path = None
+        self.image = None
+        self.image_bruitee = None
+        self.image_debruitee = None
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=0)  # Colonne gauche pour les boutons
+        self.grid_columnconfigure(1, weight=1)  # Colonne droite pour les canvas
+        self.grid_rowconfigure(1, weight=0) # Ligne en bas pour les métriques
 
         # Conteneur global à gauche pour les boutons
         self.buttons_frame = ctk.CTkFrame(self)
-        self.buttons_frame.pack(side='left', padx=(20, 20), pady=(20, 20), fill='both')
+        self.buttons_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
         # Conteneur global pour les métriques
         self.metrics_frame = ctk.CTkFrame(self)
-        self.metrics_frame.pack(side='bottom', padx=(20, 20), pady=(20, 20), fill='both')
+        self.metrics_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
 
         # Labels pour les métriques
         self.label_psnr = ctk.CTkLabel(self.metrics_frame, text="PSNR : N/A dB")
 
         # Choisir une image
         self.btn_choisir_image = ctk.CTkButton(self.buttons_frame, text="Choisir une image", command=self.choisir_image, hover_color="darkgrey")
-        self.btn_choisir_image.pack(pady=(10, 10))
+        self.btn_choisir_image.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
 
         # Conteneur global à droite pour les canvas
         self.canvas_frame = ctk.CTkFrame(self)
-        self.canvas_frame.pack(side='left', padx=(20, 20), pady=(20, 20), fill='both', expand=True)
+        self.canvas_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.canvas_frame.columnconfigure(0, weight=1)
+        self.canvas_frame.columnconfigure(1, weight=1)
+        self.canvas_frame.columnconfigure(2, weight=1)
 
         # Canvas pour l'image originale
         self.canvas_image = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+        self.canvas_image.grid(row=0, column=0, padx=10, pady=10)
 
         # Canvas pour l'image bruitée
         self.canvas_image_bruitee = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+        self.canvas_image_bruitee.grid(row=0, column=1, padx=10, pady=10)
+        self.canvas_image_bruitee.grid_remove()
 
         # Canvas pour l'image débruitée
         self.canvas_image_debruitee = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+        self.canvas_image_debruitee.grid(row=0, column=2, padx=10, pady=10)
 
         # Ajout d'un menu déroulant pour le choix du mode de détection
         self.mode_debruitage_var = tk.StringVar()
         self.mode_debruitage_var.set("Choisir le mode de débruitage")
-        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "BM3D"]
+        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Variation totale"]
         self.menu_mode_detection = ctk.CTkOptionMenu(self.buttons_frame, variable=self.mode_debruitage_var, values=self.modes_debruitage, command=self.mode_selectionne)
-        self.menu_mode_detection.pack(pady=(10, 10))
+        self.menu_mode_detection.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
 
-        self.btn_debruitage = ctk.CTkButton(self.buttons_frame, text="Débruiter l'image", command=self.debruiter, hover_color="darkgrey")
-        
+        # Paramètres filtre médian
+        self.median_window_size = tk.IntVar(value=3)
+        self.median_window_size_label = ctk.CTkLabel(self.buttons_frame, text="Taille de la fenêtre glissante")
+        self.median_window_size_label.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
+        self.median_window_size_label.grid_remove()
+        self.median_window_size_slider = ctk.CTkSlider(self.buttons_frame, from_=3, to=9, command=self.update_median_window_size)
+        self.median_window_size_slider.grid(row=3, column=0, padx=5, pady=5, sticky='nsew')
+        self.median_window_size_slider.grid_remove()
+
         # Sélection du type de bruit
         self.bruit_type_var = tk.StringVar(value="Type de bruit")
         self.menu_bruit = ctk.CTkOptionMenu(
             self.buttons_frame,
             variable=self.bruit_type_var,
             values=["Gaussien", "Sel et poivre"],
-            command=self.on_noise_type_change
+            command=self.on_bruit_type_change
         )
-        self.menu_bruit.pack(pady=(10, 10))
-        
-        # Bouton pour bruiter l'image
-        self.btn_bruiter_image = ctk.CTkButton(self.buttons_frame, text="Bruiter l'image", command=self.bruiter_image, hover_color="darkgrey")
-        self.btn_bruiter_image.pack(pady=(10, 10))
+        self.menu_bruit.grid(row=4, column=0, padx=5, pady=5, sticky='nsew')
+
+        # Slider pour la force du bruit
+        self.force_bruit = tk.DoubleVar(value=0.05)
+        self.label_force_bruit = ctk.CTkLabel(self.buttons_frame, text="Force du bruit : 0.05")
+        self.label_force_bruit.grid(row=5, column=0, padx=5, pady=5, sticky='nsew')
+        self.label_force_bruit.grid_remove()
+        self.slider_force_bruit = ctk.CTkSlider(self.buttons_frame, from_=0.01, to=1, command=self.update_force_bruit, state="disabled")
+        self.slider_force_bruit.set(0.05)
+        self.slider_force_bruit.grid(row=6, column=0, padx=5, pady=5, sticky='nsew')
+        self.slider_force_bruit.grid_remove()
+
+        self.btn_debruitage = ctk.CTkButton(self.buttons_frame, text="Débruiter l'image", command=self.debruiter, hover_color="darkgrey")
+        self.btn_debruitage.grid(row=7, column=0, padx=5, pady=5, sticky='nsew')
 
         # Initialiser les canvas : afficher l'image originale et débruitée
-        self.canvas_image.pack(side='left', padx=(20, 20), pady=(20, 20))
-        self.canvas_image.create_text(200, 20, text="Image originale", font=("Arial", 12), fill="white")
-
-        self.canvas_image_debruitee.pack(side='left', padx=(20, 20), pady=(20, 20))
-        self.canvas_image_debruitee.create_text(200, 20, text="Image débruitée", font=("Arial", 12), fill="white")
+        #self.canvas_image.grid()
+        #self.canvas_image_debruitee.grid()
 
         # Cacher l'image bruitée au début
-        self.canvas_image_bruitee.pack_forget()
+        self.canvas_image_bruitee.grid_remove()
 
     def mode_selectionne(self, mode):
-        pass  # A vous de personnaliser cette fonction selon vos besoins
+        self.median_window_size_label.grid_remove()
+        self.median_window_size_slider.grid_remove()
+        match mode:
+            case "Filtre médian":
+                self.median_window_size_label.grid()
+                self.median_window_size_slider.grid()
 
     def choisir_image(self):
         dossier_data = os.path.join(os.path.dirname(__file__),"../Data")
         self.image_path = filedialog.askopenfilename(initialdir=dossier_data)
         self.afficher_image(self.image_path, self.canvas_image)
 
+    def check_and_convert_image(self, image):
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray((image * 255).astype(np.uint8))
+        return image
+
     def afficher_image(self, image_or_path, canvas):
         if isinstance(image_or_path, str):
             image = Image.open(image_or_path)
         else:
-            image = image_or_path
+            image = self.check_and_convert_image(image_or_path)
+        canvas.update_idletasks()
         image.thumbnail((canvas.winfo_width(), canvas.winfo_height()))
         image_tk = ImageTk.PhotoImage(image)
         x = (canvas.winfo_width() - image_tk.width()) / 2
@@ -112,43 +136,56 @@ class Application(ctk.CTk):
         canvas.delete("all")
         canvas.create_image(x, y, anchor='nw', image=image_tk)
         canvas.image_tk = image_tk
+        match canvas:
+            case self.canvas_image:
+                canvas_image_center_x = self.canvas_image.winfo_width() / 2
+                canvas.create_text(canvas_image_center_x, 20, text="Image originale", font=("Arial", 12), fill="white", anchor="center")
+            case self.canvas_image_debruitee:
+                canvas_image_debruitee_center_x = self.canvas_image_debruitee.winfo_width() / 2
+                canvas.create_text(canvas_image_debruitee_center_x, 20, text="Image débruitée", font=("Arial", 12), fill="white", anchor="center")
 
-    def on_noise_type_change(self, noise_type):
-        print(f"Type de bruit sélectionné : {noise_type}")
 
+    def on_bruit_type_change(self, value):
+        self.label_force_bruit.grid()
+        self.slider_force_bruit.grid()
+        self.slider_force_bruit.configure(state="normal")
+
+    def update_force_bruit(self, value):
+        new_value = round(value, 2)
+        self.force_bruit.set(new_value)
+        if(self.bruit_type_var != "Type de bruit"):
+            self.label_force_bruit.configure(text=f"Force du bruit : {new_value}")
+            self.bruiter_image()
+
+    def update_median_window_size(self, value):
+        pass
+    
     def bruiter_image(self):
         if self.image_path:
-            # Charger l'image sélectionnée
             image = Image.open(self.image_path)
-            
-            # Récupérer le type de bruit choisi
             noise_type = self.bruit_type_var.get()
-            print(f"Type de bruit sélectionné : {noise_type}")
-            
-            # Utiliser un dictionnaire pour mapper les types de bruit
             noise_mapping = {
                 "Gaussien": "gaussian",
                 "Sel et poivre": "s&p"
             }
-            
-            # Obtenir le type de bruit à appliquer
-            noise_type = noise_mapping.get(noise_type)
+            new_noise_type = noise_mapping.get(noise_type)
             
             if noise_type:
-                # Appliquer le bruit
-                image_bruitee = noise_image(image, noise_type=noise_type)
-                
-                # Afficher l'image bruitée dans le canvas bruité
-                self.afficher_image(image_bruitee, self.canvas_image_bruitee)
-                self.canvas_image_bruitee.create_text(200, 20, text=f"Image avec bruit {noise_type}", font=("Arial", 12), fill="white")
-
-                # Afficher le canvas de l'image bruitée
-                self.canvas_image_bruitee.pack(side='left', padx=(20, 20), pady=(20, 20))
+                self.image_bruitee = noise_image_pil(image, self.force_bruit.get(), noise_type=new_noise_type)
+                self.canvas_image_bruitee.grid()
+                self.afficher_image(self.image_bruitee, self.canvas_image_bruitee)
+                canvas_image_bruitee_center_x = self.canvas_image_bruitee.winfo_width() / 2
+                self.canvas_image_bruitee.create_text(canvas_image_bruitee_center_x, 20, text=f"Image avec bruit {noise_type.lower()}", font=("Arial", 12), fill="white", anchor="center")
             else:
                 print("Aucun type de bruit valide sélectionné.")
     
     def debruiter(self):
-        pass  # Vous pouvez ajouter votre logique de débruitage ici
+        if self.image_bruitee:
+            match self.mode_debruitage_var.get():
+                case "Filtre médian":
+                    self.image_debruitee = median_denoise(self.image_bruitee)
+                    self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)
+                
 
 if __name__ == "__main__":
     app = Application()
