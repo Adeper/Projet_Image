@@ -1,4 +1,6 @@
 import numpy as np
+from skimage import img_as_float
+from skimage.filters import gaussian
 
 # Filtre médian
 def median_denoise(image_noised, window_size=3):
@@ -34,3 +36,19 @@ def median_denoise(image_noised, window_size=3):
         raise ValueError("Format d'image non supporté.")
 
     return image_filtree
+
+# Filtre gaussien
+def gaussian_denoise(image_noised, sigma=1.0):
+    image_noised = img_as_float(image_noised)
+
+    if image_noised.ndim not in [2, 3]:
+        raise ValueError("L'image d'entrée doit être en noir et blanc (1 canal) ou en couleur (3 canaux).")
+
+    if image_noised.ndim == 2:  # Image en noir et blanc
+        image_denoised = gaussian(image_noised, sigma=sigma)
+    elif image_noised.ndim == 3 and image_noised.shape[2] == 3:  # Image en couleur
+        image_denoised = gaussian(image_noised, sigma=sigma)
+    else:
+        raise ValueError("Format d'image non supporté.")
+
+    return image_denoised
