@@ -1,9 +1,9 @@
 # Neural Image Assessment (NIMA)
 
-Ce dépôt contient une partie code cloné depuis le dépôt GitHub suivant :  
-**[Neural Image Assessment (NIMA) par titu1994](https://github.com/titu1994/neural-image-assessment)**  
+Ce code contient une partie du code cloné depuis le dépôt GitHub suivant :  
+**[Neural Image Assessment (NIMA), dépot de titu1994](https://github.com/titu1994/neural-image-assessment)**  
 
-**Note importante** : Ce code n'est pas notre création. Il appartient à son auteur original et a été cloné uniquement évaluer des images grâce à un modèle pré-entrainé de NIMA
+**Note importante** : Ceci notre création. Il appartient à son auteur original et a été cloné uniquement évaluer des images grâce à un modèle pré-entrainé de NIMA
 
 ---
 
