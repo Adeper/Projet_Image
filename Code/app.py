@@ -6,12 +6,12 @@ from PIL import Image, ImageTk
 import numpy as np
 import os
 from utils import noise_image_pil, psnr
-from methods import median_denoise, gaussian_denoise
+from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise
 
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Débruitage d'images")
+        self.title("Denoisy")
         self.geometry("1920x1080")
         ctk.set_appearance_mode("Dark")
         self.image_path = None
@@ -70,11 +70,11 @@ class Application(ctk.CTk):
         # Ajout d'un menu déroulant pour le choix du mode de détection
         self.mode_debruitage_var = tk.StringVar()
         self.mode_debruitage_var.set("Choisir le mode de débruitage")
-        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Variation totale"]
+        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Ondelettes de Haar", "BM3D"]
         self.menu_mode_detection = ctk.CTkOptionMenu(self.buttons_frame, variable=self.mode_debruitage_var, values=self.modes_debruitage, command=self.mode_selectionne)
         self.menu_mode_detection.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
 
-        # Paramètres filtres
+        # Paramètres filtres médian, moyenneur et de Wiener
         self.window_size_menu = ctk.CTkOptionMenu(
             self.buttons_frame,
             values=["3", "5", "7", "9"],
@@ -83,12 +83,38 @@ class Application(ctk.CTk):
         self.window_size_menu.set("3")
         self.window_size_menu.grid(row=3, column=0, padx=5, pady=5, sticky='nsew')
         self.window_size_menu.grid_remove()
-
-        # Paramètres filtre médian
         self.window_size_label = ctk.CTkLabel(self.buttons_frame, text="Taille de la fenêtre glissante : 3")
         self.window_size_label.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
         self.window_size_label.grid_remove()
-        
+
+        # Paramètres filtre bilatéral
+        self.sigma_color = tk.DoubleVar(value=0.1)
+        self.sigma_color_label = ctk.CTkLabel(self.buttons_frame, text="Sigma color : 0.1")
+        self.sigma_color_label.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
+        self.sigma_color_label.grid_remove()
+        self.sigma_color_slider = ctk.CTkSlider(self.buttons_frame, from_=0.01, to=1, command=self.update_sigma_color, state="normal")
+        self.sigma_color_slider.set(0.1)
+        self.sigma_color_slider.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
+        self.sigma_color_slider.grid_remove()
+
+        self.sigma_spatial = tk.IntVar(value=15)
+        self.sigma_spatial_label = ctk.CTkLabel(self.buttons_frame, text="Sigma spatial : 15")
+        self.sigma_spatial_label.grid(row=4, column=0, padx=5, pady=5, sticky="nsew")
+        self.sigma_spatial_label.grid_remove()
+        self.sigma_spatial_slider = ctk.CTkSlider(self.buttons_frame, from_=1, to=20, command=self.update_sigma_spatial, state="normal")
+        self.sigma_spatial_slider.set(15)
+        self.sigma_spatial_slider.grid(row=5, column=0, padx=5, pady=5, sticky="nsew")
+        self.sigma_spatial_slider.grid_remove()
+
+        # Paramètres variation totale
+        self.weight_tv = tk.DoubleVar(value=0.1)
+        self.weight_tv_label = ctk.CTkLabel(self.buttons_frame, text="Poids de la régularisation : 0.1")
+        self.weight_tv_label.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
+        self.weight_tv_label.grid_remove()
+        self.weight_tv_slider = ctk.CTkSlider(self.buttons_frame, from_=0.01, to=0.5, command=self.update_weight_tv, state="normal")
+        self.weight_tv_slider.set(0.1)
+        self.weight_tv_slider.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
+        self.weight_tv_slider.grid_remove()
 
         # Sélection du type de bruit
         self.bruit_type_var = tk.StringVar(value="Type de bruit")
@@ -98,24 +124,30 @@ class Application(ctk.CTk):
             values=["Gaussien", "Sel et poivre"],
             command=self.on_bruit_type_change
         )
-        self.menu_bruit.grid(row=4, column=0, padx=5, pady=5, sticky='nsew')
+        self.menu_bruit.grid(row=6, column=0, padx=5, pady=5, sticky='nsew')
 
         # Slider pour la force du bruit
         self.force_bruit = tk.DoubleVar(value=0.05)
         self.label_force_bruit = ctk.CTkLabel(self.buttons_frame, text="Force du bruit : 0.05")
-        self.label_force_bruit.grid(row=5, column=0, padx=5, pady=5, sticky='nsew')
+        self.label_force_bruit.grid(row=7, column=0, padx=5, pady=5, sticky='nsew')
         self.label_force_bruit.grid_remove()
         self.slider_force_bruit = ctk.CTkSlider(self.buttons_frame, from_=0.01, to=1, command=self.update_force_bruit, state="disabled")
         self.slider_force_bruit.set(0.05)
-        self.slider_force_bruit.grid(row=6, column=0, padx=5, pady=5, sticky='nsew')
+        self.slider_force_bruit.grid(row=8, column=0, padx=5, pady=5, sticky='nsew')
         self.slider_force_bruit.grid_remove()
 
         self.btn_debruitage = ctk.CTkButton(self.buttons_frame, text="Débruiter l'image", command=self.debruiter, hover_color="darkgrey")
-        self.btn_debruitage.grid(row=7, column=0, padx=5, pady=5, sticky='nsew')
+        self.btn_debruitage.grid(row=9, column=0, padx=5, pady=5, sticky='nsew')
 
     def mode_selectionne(self, mode):
         self.window_size_label.grid_remove()
         self.window_size_menu.grid_remove()
+        self.sigma_color_label.grid_remove()
+        self.sigma_color_slider.grid_remove()
+        self.sigma_spatial_label.grid_remove()
+        self.sigma_spatial_slider.grid_remove()
+        self.weight_tv_label.grid_remove()
+        self.weight_tv_slider.grid_remove()
         match mode:
             case "Filtre médian":
                 self.window_size_label.grid()
@@ -123,13 +155,27 @@ class Application(ctk.CTk):
             case "Filtre moyenneur":
                 self.window_size_label.grid()
                 self.window_size_menu.grid()
-
+            case "Filtre bilatéral":
+                self.sigma_color_label.grid()
+                self.sigma_color_slider.grid()
+                self.sigma_spatial_label.grid()
+                self.sigma_spatial_slider.grid()
+            case "Filtre de Wiener":
+                self.window_size_label.grid()
+                self.window_size_menu.grid()
+            case "Variation totale":
+                self.weight_tv_label.grid()
+                self.weight_tv_slider.grid()
 
     def choisir_image(self):
         dossier_data = os.path.join(os.path.dirname(__file__),"../Data")
         self.image_path = filedialog.askopenfilename(initialdir=dossier_data)
         self.image = Image.open(self.image_path)
         self.afficher_image(self.image_path, self.canvas_image)
+        self.canvas_image_bruitee.grid_remove()
+        self.image_bruitee = None
+        self.canvas_image_debruitee.grid_remove()
+        self.image_debruitee = None
 
     def check_and_convert_image(self, image):
         if isinstance(image, np.ndarray):
@@ -172,7 +218,21 @@ class Application(ctk.CTk):
             self.bruiter_image()
 
     def update_window_size(self, value):
-        self.window_size_menu.configure(text=f"Taille de la fenêtre glissante : {value}") 
+        self.window_size_label.configure(text=f"Taille de la fenêtre glissante : {value}")
+
+    def update_sigma_color(self, value):
+        new_value = round(value, 2)
+        self.sigma_color.set(new_value)
+        self.sigma_color_label.configure(text=f"Sigma color : {new_value}")
+
+    def update_sigma_spatial(self, value):
+        self.sigma_spatial.set(int(value))
+        self.sigma_spatial_label.configure(text=f"Sigma spatial : {int(value)}")
+
+    def update_weight_tv(self, value):
+        new_value = round(value, 2)
+        self.weight_tv.set(new_value)
+        self.weight_tv_label.configure(text=f"Poids de la régularisation : {new_value}")
     
     def bruiter_image(self):
         if self.image:
@@ -199,11 +259,17 @@ class Application(ctk.CTk):
             match self.mode_debruitage_var.get():
                 case "Filtre médian":
                     self.image_debruitee = median_denoise(self.image_bruitee, int(self.window_size_menu.get()))
-                    self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)
                 case "Filtre moyenneur":
-                    self.image_debruitee = gaussian_denoise(self.image_bruitee)
-                    self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)
+                    self.image_debruitee = mean_denoise(self.image_bruitee, int(self.window_size_menu.get()))
+                case "Filtre bilatéral":
+                    self.image_debruitee = bilateral_denoise(self.image_bruitee, self.sigma_color.get(), self.sigma_spatial.get())
+                case "Filtre de Wiener":
+                    self.image_debruitee = wiener_denoise(self.image_bruitee, int(self.window_size_menu.get()))
+                case "Variation totale":
+                    self.image_debruitee = total_variation_denoise(self.image_bruitee, self.weight_tv.get())
+
             if self.image_debruitee is not None:
+                self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)
                 self.label_psnr_debruitee.configure(text=f"PSNR entre l'image originale et débruitée : {round(psnr(self.image, self.image_debruitee),2)} dB")
                 self.label_psnr_debruitee.grid()
 
