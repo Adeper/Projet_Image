@@ -1,7 +1,10 @@
 import numpy as np
+from PIL import Image
 from skimage.restoration import denoise_tv_chambolle, denoise_bilateral
+import bm3d
 from scipy.signal import wiener
 import pywt
+import torch
 
 # Filtre médian
 def median_denoise(image_noised, window_size=3):
@@ -117,5 +120,86 @@ def total_variation_denoise(image_noised, weight=0.1):
             image_denoised_np[:, :, channel] = denoise_tv_chambolle(image_noised_np[:, :, channel], weight=weight)
     else:
         raise ValueError("Format d'image non supporté.")
+
+    image_denoised_np = np.clip(image_denoised_np, 0, 1)
     
     return image_denoised_np
+
+# Ondelettes de Haar
+def haar_denoise(image_noised, threshold=0.1):
+    image_noised_np = np.array(image_noised, dtype=np.float64)
+    image_noised_np = image_noised_np / 255.0
+    
+    if image_noised_np.ndim == 3 and image_noised_np.shape[2] == 3:
+        image_denoised = np.zeros_like(image_noised_np)
+        
+        for canal in range(3):
+            channel = image_noised_np[:, :, canal]
+            
+            coeffs2 = pywt.dwt2(channel, 'haar')
+            LL, (LH, HL, HH) = coeffs2
+            
+            LH = pywt.threshold(LH, threshold, mode='soft')
+            HL = pywt.threshold(HL, threshold, mode='soft')
+            HH = pywt.threshold(HH, threshold, mode='soft')
+            
+            denoised_channel = pywt.idwt2((LL, (LH, HL, HH)), 'haar')
+            
+            image_denoised[:, :, canal] = np.clip(denoised_channel, 0, 1)  # Normaliser entre 0 et 1
+        
+        #image_denoised = np.clip(image_denoised, 0, 1)
+        image_denoised = np.uint8(image_denoised * 255)
+        
+        return image_denoised
+
+    else:
+        raise ValueError("L'image doit être en couleur (3 canaux).")
+
+# Filtre BM3D
+def bm3d_denoise(image_noised, sigma_psd=25, stage_arg=0.1):
+
+    image_noised_np = np.array(image_noised, dtype=np.float64)
+    image_noised_np = image_noised_np / 255.0
+    
+    if image_noised_np.ndim == 2:
+        image_denoised_np = bm3d.bm3d(image_noised_np, sigma_psd=ecart_type_bruit)
+    elif image_noised_np.ndim == 3:
+        image_denoised_np = np.zeros_like(image_noised_np)
+        for canal in range(3):
+            image_denoised_np[:, :, canal] = bm3d.bm3d(image_noised_np[:, :, canal], sigma_psd=sigma_psd)
+    else:
+        raise ValueError("Format d'image non supporté.")
+    
+    return image_denoised_np
+
+class PyTorchDenoiseModel:
+    def __init__(self, model_path):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = self._load_model(model_path)
+        self.model.to(self.device)
+        self.model.eval()
+
+    def _load_model(self, model_path):
+        model = torch.load(model_path, map_location=self.device)
+        return model
+
+    def denoise(self, image_noised):
+        input_tensor = self._preprocess_image(image_noised).to(self.device)
+        with torch.no_grad():
+            output_tensor = self.model(input_tensor)
+        return self._postprocess_image(output_tensor)
+
+    def _preprocess_image(self, image):
+        image = np.array(image, dtype=np.float32) / 255.0
+        if image.ndim == 2:
+            image = np.expand_dims(image, axis=0)
+        else:
+            image = np.transpose(image, (2, 0, 1))
+        image = np.expand_dims(image, axis=0)
+        return torch.tensor(image, dtype=torch.float32)
+
+    def _postprocess_image(self, output_tensor):
+        output_image = output_tensor.squeeze().cpu().numpy()
+        if output_image.ndim == 3:
+            output_image = np.transpose(output_image, (1, 2, 0)) 
+        return np.clip(output_image, 0, 1)
