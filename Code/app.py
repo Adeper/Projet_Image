@@ -6,7 +6,7 @@ from PIL import Image, ImageTk
 import numpy as np
 import os
 from utils import noise_image_pil, psnr, ssim_score
-from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, haar_denoise, bm3d_denoise, PyTorchDenoiseModel
+from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, haar_denoise, bm3d_denoise, CGNet, CGNetDenoise
 
 class Application(ctk.CTk):
     def __init__(self):
@@ -18,7 +18,8 @@ class Application(ctk.CTk):
         self.image = None
         self.image_bruitee = None
         self.image_debruitee = None
-        #self.pytorch_model = PyTorchDenoiseModel("_CGNet_BSD500/cgnet_denoising_optimized.pth")
+        self.CGNetGAN = CGNetDenoise("_CGNet_BSD500/generator.pth")
+        self.nima_model = None
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=0)  # Colonne gauche pour les boutons
@@ -87,7 +88,7 @@ class Application(ctk.CTk):
         # Ajout d'un menu déroulant pour le choix du mode de détection
         self.mode_debruitage_var = tk.StringVar()
         self.mode_debruitage_var.set("Choisir le mode de débruitage")
-        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Ondelettes de Haar", "BM3D"]
+        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Ondelettes de Haar", "BM3D", "CGNet GAN"]
         self.menu_mode_detection = ctk.CTkOptionMenu(self.buttons_frame, variable=self.mode_debruitage_var, values=self.modes_debruitage, command=self.mode_selectionne)
         self.menu_mode_detection.grid(row=2, column=0, padx=5, pady=5, sticky='nsew')
 
@@ -213,6 +214,8 @@ class Application(ctk.CTk):
             case "BM3D":
                 self.sigma_psd_label.grid()
                 self.sigma_psd_slider.grid()
+            case "CGNet GAN":
+                pass
 
     def choisir_image(self):
         dossier_data = os.path.join(os.path.dirname(__file__),"../Data")
@@ -346,6 +349,9 @@ class Application(ctk.CTk):
                     self.image_debruitee = haar_denoise(self.image_bruitee, self.haar_threshold.get())
                 case "BM3D":
                     self.image_debruitee = bm3d_denoise(self.image_bruitee, self.sigma_psd.get())
+                case "CGNet GAN":
+                    self.image_debruitee = self.CGNetGAN.denoise(self.image_bruitee)
+
 
         elif self.image_bruitee_var.get():
             match self.mode_debruitage_var.get():
@@ -363,6 +369,8 @@ class Application(ctk.CTk):
                     self.image_debruitee = haar_denoise(self.image, self.haar_threshold.get())
                 case "BM3D":
                     self.image_debruitee = bm3d_denoise(self.image, self.sigma_psd.get())
+                case "CGNet GAN":
+                    self.image_debruitee = self.CGNetGAN.denoise(self.image)
         
         if self.image_debruitee is not None:
             self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)

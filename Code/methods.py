@@ -5,6 +5,7 @@ import bm3d
 from scipy.signal import wiener
 import pywt
 import torch
+import torch.nn as nn
 
 # Filtre médian
 def median_denoise(image_noised, window_size=3):
@@ -172,7 +173,21 @@ def bm3d_denoise(image_noised, sigma_psd=25, stage_arg=0.1):
     
     return image_denoised_np
 
-class PyTorchDenoiseModel:
+class CGNet(nn.Module):
+    def __init__(self):
+        super(CGNet, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1),
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+class CGNetDenoise:
     def __init__(self, model_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self._load_model(model_path)
@@ -187,7 +202,8 @@ class PyTorchDenoiseModel:
         input_tensor = self._preprocess_image(image_noised).to(self.device)
         with torch.no_grad():
             output_tensor = self.model(input_tensor)
-        return self._postprocess_image(output_tensor)
+        denoised_image = self._postprocess_image(output_tensor)
+        return denoised_image
 
     def _preprocess_image(self, image):
         image = np.array(image, dtype=np.float32) / 255.0
@@ -201,5 +217,5 @@ class PyTorchDenoiseModel:
     def _postprocess_image(self, output_tensor):
         output_image = output_tensor.squeeze().cpu().numpy()
         if output_image.ndim == 3:
-            output_image = np.transpose(output_image, (1, 2, 0)) 
+            output_image = np.transpose(output_image, (1, 2, 0))
         return np.clip(output_image, 0, 1)
