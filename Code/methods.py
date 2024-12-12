@@ -73,6 +73,47 @@ def mean_denoise(image_noised, window_size=3):
 
     return image_filtree
 
+# Filtre gaussien
+def gaussian_denoise(image_noised, window_size=3, sigma=1.0):
+    image_noised = np.array(image_noised)
+    image_noised = image_noised / 255.0
+    
+    if image_noised.ndim not in [2, 3]:
+        raise ValueError("L'image d'entrée doit être en noir et blanc (1 canal) ou en couleur (3 canaux).")
+    
+    if window_size % 2 == 0:
+        raise ValueError("La taille de la fenêtre doit être impaire.")
+    
+    # Générer le noyau gaussien
+    offset = window_size // 2
+    kernel = np.fromfunction(
+        lambda x, y: (1 / (2 * np.pi * sigma ** 2)) * np.exp(-((x - offset) ** 2 + (y - offset) ** 2) / (2 * sigma ** 2)),
+        (window_size, window_size)
+    )
+    
+    kernel /= np.sum(kernel)
+    
+    image_filtree = image_noised.copy()
+
+    if image_noised.ndim == 2:
+        for i in range(offset, image_noised.shape[0] - offset):
+            for j in range(offset, image_noised.shape[1] - offset):
+                window = image_noised[i - offset:i + offset + 1, j - offset:j + offset + 1]
+                filtered_value = np.sum(window * kernel)
+                image_filtree[i, j] = filtered_value
+
+    elif image_noised.ndim == 3 and image_noised.shape[2] == 3:
+        for channel in range(3):
+            for i in range(offset, image_noised.shape[0] - offset):
+                for j in range(offset, image_noised.shape[1] - offset):
+                    window = image_noised[i - offset:i + offset + 1, j - offset:j + offset + 1, channel]
+                    filtered_value = np.sum(window * kernel)
+                    image_filtree[i, j, channel] = filtered_value
+    else:
+        raise ValueError("Format d'image non supporté.")
+    
+    return image_filtree
+
 # Filtre bilatéral
 def bilateral_denoise(image_noised, sigma_color=0.1, sigma_spatial=15):
     image_noised_np = np.array(image_noised, dtype=np.float64)

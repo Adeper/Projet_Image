@@ -6,7 +6,7 @@ from PIL import Image, ImageTk
 import numpy as np
 import os
 from utils import noise_image_pil, psnr, ssim_score
-from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, fourier_denoise, haar_denoise, bm3d_denoise, CGNet, CGNetDenoise
+from methods import median_denoise, mean_denoise, gaussian_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, fourier_denoise, haar_denoise, bm3d_denoise, CGNet, CGNetDenoise
 
 class Application(ctk.CTk):
     def __init__(self):
@@ -88,11 +88,11 @@ class Application(ctk.CTk):
         # Ajout d'un menu déroulant pour le choix du mode de détection
         self.mode_debruitage_var = tk.StringVar()
         self.mode_debruitage_var.set("Choisir le mode de débruitage")
-        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Transformée de Fourier", "Ondelettes de Haar", "BM3D", "CGNet GAN"]
+        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre gaussien", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Transformée de Fourier", "Ondelettes de Haar", "BM3D", "CGNet GAN"]
         self.menu_mode_detection = ctk.CTkOptionMenu(self.buttons_frame, variable=self.mode_debruitage_var, values=self.modes_debruitage, command=self.mode_selectionne)
-        self.menu_mode_detection.grid(row=2, column=0, padx=5, pady=5, sticky='nsew')
+        self.menu_mode_detection.grid(row=2, column=0, padx=5, pady=5, sticky='nsew')   
 
-        # Paramètres filtres médian, moyenneur et de Wiener
+        # Paramètres filtres médian, moyenneur, gaussien et de Wiener
         self.window_size_menu = ctk.CTkOptionMenu(
             self.buttons_frame,
             values=["3", "5", "7", "9"],
@@ -207,6 +207,9 @@ class Application(ctk.CTk):
                 self.window_size_label.grid()
                 self.window_size_menu.grid()
             case "Filtre moyenneur":
+                self.window_size_label.grid()
+                self.window_size_menu.grid()
+            case "Filtre gaussien":
                 self.window_size_label.grid()
                 self.window_size_menu.grid()
             case "Filtre bilatéral":
@@ -359,6 +362,8 @@ class Application(ctk.CTk):
                     self.image_debruitee = median_denoise(self.image_bruitee, int(self.window_size_menu.get()))
                 case "Filtre moyenneur":
                     self.image_debruitee = mean_denoise(self.image_bruitee, int(self.window_size_menu.get()))
+                case "Filtre gaussien":
+                    self.image_debruitee = gaussian_denoise(self.image_bruitee, int(self.window_size_menu.get()))
                 case "Filtre bilatéral":
                     self.image_debruitee = bilateral_denoise(self.image_bruitee, self.sigma_color.get(), self.sigma_spatial.get())
                 case "Filtre de Wiener":
@@ -381,6 +386,8 @@ class Application(ctk.CTk):
                     self.image_debruitee = median_denoise(self.image, int(self.window_size_menu.get()))
                 case "Filtre moyenneur":
                     self.image_debruitee = mean_denoise(self.image, int(self.window_size_menu.get()))
+                case "Filtre gaussien":
+                    self.image_debruitee = gaussian_denoise(self.image, int(self.window_size_menu.get()))
                 case "Filtre bilatéral":
                     self.image_debruitee = bilateral_denoise(self.image, self.sigma_color.get(), self.sigma_spatial.get())
                 case "Filtre de Wiener":
