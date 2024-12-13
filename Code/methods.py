@@ -87,6 +87,47 @@ def mean_denoise(image_noised, window_size=3):
 
     return image_filtree
 
+# Filtre gaussien
+def gaussian_denoise(image_noised, window_size=3, sigma=1.0):
+    image_noised = np.array(image_noised)
+    image_noised = image_noised / 255.0
+    
+    if image_noised.ndim not in [2, 3]:
+        raise ValueError("L'image d'entrée doit être en noir et blanc (1 canal) ou en couleur (3 canaux).")
+    
+    if window_size % 2 == 0:
+        raise ValueError("La taille de la fenêtre doit être impaire.")
+    
+    # Générer le noyau gaussien
+    offset = window_size // 2
+    kernel = np.fromfunction(
+        lambda x, y: (1 / (2 * np.pi * sigma ** 2)) * np.exp(-((x - offset) ** 2 + (y - offset) ** 2) / (2 * sigma ** 2)),
+        (window_size, window_size)
+    )
+    
+    kernel /= np.sum(kernel)
+    
+    image_filtree = image_noised.copy()
+
+    if image_noised.ndim == 2:
+        for i in range(offset, image_noised.shape[0] - offset):
+            for j in range(offset, image_noised.shape[1] - offset):
+                window = image_noised[i - offset:i + offset + 1, j - offset:j + offset + 1]
+                filtered_value = np.sum(window * kernel)
+                image_filtree[i, j] = filtered_value
+
+    elif image_noised.ndim == 3 and image_noised.shape[2] == 3:
+        for channel in range(3):
+            for i in range(offset, image_noised.shape[0] - offset):
+                for j in range(offset, image_noised.shape[1] - offset):
+                    window = image_noised[i - offset:i + offset + 1, j - offset:j + offset + 1, channel]
+                    filtered_value = np.sum(window * kernel)
+                    image_filtree[i, j, channel] = filtered_value
+    else:
+        raise ValueError("Format d'image non supporté.")
+    
+    return image_filtree
+
 # Filtre bilatéral
 def bilateral_denoise(image_noised, sigma_color=0.1, sigma_spatial=15):
     image_noised_np = np.array(image_noised, dtype=np.float64)
@@ -161,14 +202,60 @@ def haar_denoise(image_noised, threshold=0.1):
             denoised_channel = pywt.idwt2((LL, (LH, HL, HH)), 'haar')
             
             image_denoised[:, :, canal] = np.clip(denoised_channel, 0, 1)  # Normaliser entre 0 et 1
-        
-        #image_denoised = np.clip(image_denoised, 0, 1)
-        image_denoised = np.uint8(image_denoised * 255)
-        
+                
         return image_denoised
 
     else:
         raise ValueError("L'image doit être en couleur (3 canaux).")
+
+# Transformée de Fourier
+def fourier_denoise(image_noised, filter_param=30, sigma=None):
+    image_noised_np = np.array(image_noised, dtype=np.float64) / 255.0
+    
+    if image_noised_np.ndim == 3 and image_noised_np.shape[2] == 3:
+        image_denoised = np.zeros_like(image_noised_np)
+        
+        for canal in range(3):
+            channel = image_noised_np[:, :, canal]
+            
+            fourier_shifted = apply_fourier_transform(channel)
+            
+            filtered_fourier = apply_gaussian_low_pass_filter(fourier_shifted, filter_param)
+            
+            denoised_channel = apply_inverse_fourier_transform(filtered_fourier)
+            
+            image_denoised[:, :, canal] = np.clip(denoised_channel, 0, 1)
+        
+        image_denoised = np.clip(image_denoised, 0, 1)
+        
+        return image_denoised
+    else:
+        raise ValueError("L'image doit être en couleur (3 canaux).")
+
+# Fonction de transformation de Fourier
+def apply_fourier_transform(image):
+    fourier = np.fft.fft2(image)
+    fourier_shifted = np.fft.fftshift(fourier)
+    return fourier_shifted
+
+# Fonction de transformation inverse de Fourier
+def apply_inverse_fourier_transform(filtered_fourier):
+    filtered_fourier_shifted_back = np.fft.ifftshift(filtered_fourier)
+    denoised_image = np.fft.ifft2(filtered_fourier_shifted_back)
+    denoised_image = np.abs(denoised_image)  # Prendre l'amplitude réelle
+    return denoised_image
+
+# Filtrage passe-bas gaussien
+def apply_gaussian_low_pass_filter(fourier_shifted, sigma):
+    rows, cols = fourier_shifted.shape
+    center_row, center_col = rows // 2, cols // 2
+    mask = np.zeros((rows, cols))
+    for i in range(rows):
+        for j in range(cols):
+            distance = ((i - center_row) ** 2 + (j - center_col) ** 2)
+            mask[i, j] = np.exp(-distance / (2 * sigma ** 2))
+    filtered_fourier = fourier_shifted * mask
+    return filtered_fourier
 
 # Filtre BM3D
 def bm3d_denoise(image_noised, sigma_psd=25, stage_arg=0.1):

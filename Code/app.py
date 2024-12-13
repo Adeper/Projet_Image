@@ -6,13 +6,13 @@ from PIL import Image, ImageTk
 import numpy as np
 import os
 from utils import noise_image_pil, psnr, ssim_score
-from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, haar_denoise, bm3d_denoise, CGNet, GANDenoise
+from methods import median_denoise, mean_denoise, gaussian_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, fourier_denoise, haar_denoise, bm3d_denoise, CGNet, CGNetCombination, GANDenoise, CGNetDenoise
 
 class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Denoisy")
-        self.geometry("1920x1080")
+        self.geometry("2560x1600")
         ctk.set_appearance_mode("Dark")
         ctk.set_widget_scaling(2)
         self.image_path = None
@@ -20,6 +20,7 @@ class Application(ctk.CTk):
         self.image_bruitee = None
         self.image_debruitee = None
         self.GAN = GANDenoise("_CGNet_BSD500/generator.pth")
+        self.CGNet = CGNetDenoise("_CGNet_BSD500/cgnet_combinaison.pth")
         self.nima_model = None
 
         self.grid_rowconfigure(0, weight=1)
@@ -72,28 +73,28 @@ class Application(ctk.CTk):
         self.canvas_frame.columnconfigure(2, weight=1)
 
         # Canvas pour l'image originale
-        self.canvas_image = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+        self.canvas_image = ctk.CTkCanvas(self.canvas_frame, width=600, height=600)
         self.canvas_image.grid(row=1, column=0, padx=10, pady=10)
         self.canvas_image.grid_remove()
 
         # Canvas pour l'image bruitée
-        self.canvas_image_bruitee = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+        self.canvas_image_bruitee = ctk.CTkCanvas(self.canvas_frame, width=600, height=600)
         self.canvas_image_bruitee.grid(row=1, column=1, padx=10, pady=10)
         self.canvas_image_bruitee.grid_remove()
 
         # Canvas pour l'image débruitée
-        self.canvas_image_debruitee = ctk.CTkCanvas(self.canvas_frame, width=400, height=400)
+        self.canvas_image_debruitee = ctk.CTkCanvas(self.canvas_frame, width=600, height=600)
         self.canvas_image_debruitee.grid(row=1, column=2, padx=10, pady=10)
         self.canvas_image_debruitee.grid_remove()
 
         # Ajout d'un menu déroulant pour le choix du mode de détection
         self.mode_debruitage_var = tk.StringVar()
         self.mode_debruitage_var.set("Choisir le mode de débruitage")
-        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Ondelettes de Haar", "BM3D", "GAN"]
+        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre gaussien", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Transformée de Fourier", "Ondelettes de Haar", "BM3D", "CGNet", "GAN"]
         self.menu_mode_detection = ctk.CTkOptionMenu(self.buttons_frame, variable=self.mode_debruitage_var, values=self.modes_debruitage, command=self.mode_selectionne)
-        self.menu_mode_detection.grid(row=2, column=0, padx=5, pady=5, sticky='nsew')
+        self.menu_mode_detection.grid(row=2, column=0, padx=5, pady=5, sticky='nsew')   
 
-        # Paramètres filtres médian, moyenneur et de Wiener
+        # Paramètres filtres médian, moyenneur, gaussien et de Wiener
         self.window_size_menu = ctk.CTkOptionMenu(
             self.buttons_frame,
             values=["3", "5", "7", "9"],
@@ -134,6 +135,16 @@ class Application(ctk.CTk):
         self.weight_tv_slider.set(0.1)
         self.weight_tv_slider.grid(row=4, column=0, padx=5, pady=5, sticky="nsew")
         self.weight_tv_slider.grid_remove()
+
+        # Paramètres Fourier
+        self.fourier_threshold = tk.IntVar(value=30)
+        self.fourier_threshold_label = ctk.CTkLabel(self.buttons_frame, text="Seuil : 30")
+        self.fourier_threshold_label.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
+        self.fourier_threshold_label.grid_remove()
+        self.fourier_threshold_slider = ctk.CTkSlider(self.buttons_frame, from_=1, to=100, command=self.update_fourier_threshold, state="normal")
+        self.fourier_threshold_slider.set(0.1)
+        self.fourier_threshold_slider.grid(row=4, column=0, padx=5, pady=5, sticky="nsew")
+        self.fourier_threshold_slider.grid_remove()
 
         # Paramètres Haar
         self.haar_threshold = tk.DoubleVar(value=0.1)
@@ -187,6 +198,8 @@ class Application(ctk.CTk):
         self.sigma_spatial_slider.grid_remove()
         self.weight_tv_label.grid_remove()
         self.weight_tv_slider.grid_remove()
+        self.fourier_threshold_label.grid_remove()
+        self.fourier_threshold_slider.grid_remove()
         self.haar_threshold_label.grid_remove()
         self.haar_threshold_slider.grid_remove()
         self.sigma_psd_label.grid_remove()
@@ -196,6 +209,9 @@ class Application(ctk.CTk):
                 self.window_size_label.grid()
                 self.window_size_menu.grid()
             case "Filtre moyenneur":
+                self.window_size_label.grid()
+                self.window_size_menu.grid()
+            case "Filtre gaussien":
                 self.window_size_label.grid()
                 self.window_size_menu.grid()
             case "Filtre bilatéral":
@@ -209,12 +225,17 @@ class Application(ctk.CTk):
             case "Variation totale":
                 self.weight_tv_label.grid()
                 self.weight_tv_slider.grid()
+            case "Transformée de Fourier":
+                self.fourier_threshold_label.grid()
+                self.fourier_threshold_slider.grid()
             case "Ondelettes de Haar":
                 self.haar_threshold_label.grid()
                 self.haar_threshold_slider.grid()
             case "BM3D":
                 self.sigma_psd_label.grid()
                 self.sigma_psd_slider.grid()
+            case "CGNet":
+                pass
             case "GAN":
                 pass
 
@@ -246,6 +267,7 @@ class Application(ctk.CTk):
         canvas.grid()
         canvas.update_idletasks()
         image.thumbnail((canvas.winfo_width(), canvas.winfo_height()))
+        image = image.resize((canvas.winfo_width(), canvas.winfo_height()))
         image_tk = ImageTk.PhotoImage(image)
         x = (canvas.winfo_width() - image_tk.width()) / 2
         y = (canvas.winfo_height() - image_tk.height()) / 2
@@ -255,10 +277,10 @@ class Application(ctk.CTk):
         match canvas:
             case self.canvas_image:
                 canvas_image_center_x = self.canvas_image.winfo_width() / 2
-                canvas.create_text(canvas_image_center_x, 20, text="Image originale", font=("Arial", 12), fill="white", anchor="center")
+                canvas.create_text(canvas_image_center_x, 20, text="Image originale", font=("Arial", 30), fill="white", anchor="center")
             case self.canvas_image_debruitee:
                 canvas_image_debruitee_center_x = self.canvas_image_debruitee.winfo_width() / 2
-                canvas.create_text(canvas_image_debruitee_center_x, 20, text=f"Image débruitée par {self.mode_debruitage_var.get().lower()}", font=("Arial", 12), fill="white", anchor="center")
+                canvas.create_text(canvas_image_debruitee_center_x, 20, text=f"Image débruitée par {self.mode_debruitage_var.get().lower()}", font=("Arial", 30), fill="white", anchor="center")
 
     def on_checkbox_image_bruitee_change(self):
         if self.image_bruitee_var.get():
@@ -297,6 +319,10 @@ class Application(ctk.CTk):
         self.weight_tv.set(new_value)
         self.weight_tv_label.configure(text=f"Poids de la régularisation : {new_value}")
 
+    def update_fourier_threshold(self, value):
+        self.fourier_threshold.set(int(value))
+        self.fourier_threshold_label.configure(text=f"Seuil : {int(value)}")
+
     def update_haar_threshold(self, value):
         new_value = round(value, 2)
         self.haar_threshold.set(new_value)
@@ -322,6 +348,7 @@ class Application(ctk.CTk):
             
             if new_noise_type:
                 self.image_bruitee = noise_image_pil(self.image, self.force_bruit.get(), noise_type=new_noise_type)
+                self.image_bruitee.save("../Results/bruitee.png")
                 self.canvas_image_bruitee.grid()
                 self.afficher_image(self.image_bruitee, self.canvas_image_bruitee)
                 canvas_image_bruitee_center_x = self.canvas_image_bruitee.winfo_width() / 2
@@ -329,7 +356,7 @@ class Application(ctk.CTk):
                 self.label_psnr_bruitee.grid()
                 self.label_ssim_bruitee.configure(text=f"SSIM entre l'image originale et bruitée : {round(ssim_score(self.image, self.image_bruitee),2)}")
                 self.label_ssim_bruitee.grid()
-                self.canvas_image_bruitee.create_text(canvas_image_bruitee_center_x, 20, text=f"Image avec bruit {noise_type.lower()}", font=("Arial", 12), fill="white", anchor="center")
+                self.canvas_image_bruitee.create_text(canvas_image_bruitee_center_x, 20, text=f"Image avec bruit {noise_type.lower()}", font=("Arial", 30), fill="white", anchor="center")
             else:
                 print("Aucun type de bruit valide sélectionné.")
     
@@ -340,16 +367,22 @@ class Application(ctk.CTk):
                     self.image_debruitee = median_denoise(self.image_bruitee, int(self.window_size_menu.get()))
                 case "Filtre moyenneur":
                     self.image_debruitee = mean_denoise(self.image_bruitee, int(self.window_size_menu.get()))
+                case "Filtre gaussien":
+                    self.image_debruitee = gaussian_denoise(self.image_bruitee, int(self.window_size_menu.get()))
                 case "Filtre bilatéral":
                     self.image_debruitee = bilateral_denoise(self.image_bruitee, self.sigma_color.get(), self.sigma_spatial.get())
                 case "Filtre de Wiener":
                     self.image_debruitee = wiener_denoise(self.image_bruitee, int(self.window_size_menu.get()))
                 case "Variation totale":
                     self.image_debruitee = total_variation_denoise(self.image_bruitee, self.weight_tv.get())
+                case "Transformée de Fourier":
+                    self.image_debruitee = fourier_denoise(self.image_bruitee, self.fourier_threshold.get())
                 case "Ondelettes de Haar":
                     self.image_debruitee = haar_denoise(self.image_bruitee, self.haar_threshold.get())
                 case "BM3D":
                     self.image_debruitee = bm3d_denoise(self.image_bruitee, self.sigma_psd.get())
+                case "CGNet":
+                    self.image_debruitee = self.CGNet.denoise(self.image_bruitee)
                 case "GAN":
                     self.image_debruitee = self.GAN.denoise(self.image_bruitee)
 
@@ -359,21 +392,29 @@ class Application(ctk.CTk):
                     self.image_debruitee = median_denoise(self.image, int(self.window_size_menu.get()))
                 case "Filtre moyenneur":
                     self.image_debruitee = mean_denoise(self.image, int(self.window_size_menu.get()))
+                case "Filtre gaussien":
+                    self.image_debruitee = gaussian_denoise(self.image, int(self.window_size_menu.get()))
                 case "Filtre bilatéral":
                     self.image_debruitee = bilateral_denoise(self.image, self.sigma_color.get(), self.sigma_spatial.get())
                 case "Filtre de Wiener":
                     self.image_debruitee = wiener_denoise(self.image, int(self.window_size_menu.get()))
                 case "Variation totale":
                     self.image_debruitee = total_variation_denoise(self.image, self.weight_tv.get())
+                case "Transformée de Fourier":
+                    self.image_debruitee = fourier_denoise(self.image, self.fourier_threshold.get())
                 case "Ondelettes de Haar":
                     self.image_debruitee = haar_denoise(self.image, self.haar_threshold.get())
                 case "BM3D":
                     self.image_debruitee = bm3d_denoise(self.image, self.sigma_psd.get())
+                case "CGNet":
+                    self.image_debruitee = self.CGNet.denoise(self.image)
                 case "GAN":
                     self.image_debruitee = self.GAN.denoise(self.image)
         
         if self.image_debruitee is not None:
             self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)
+            image_debruitee_pil = self.check_and_convert_image(self.image_debruitee)
+            image_debruitee_pil.save("../Results/debruitee.png")
             self.label_psnr_debruitee.configure(text=f"PSNR entre l'image originale et débruitée : {round(psnr(self.image, self.image_debruitee),2)} dB")
             self.label_psnr_debruitee.grid()
             self.label_ssim_debruitee.configure(text=f"SSIM entre l'image originale et débruitée : {round(ssim_score(self.image, self.image_debruitee),2)}")
