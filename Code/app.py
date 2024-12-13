@@ -6,7 +6,7 @@ from PIL import Image, ImageTk
 import numpy as np
 import os
 from utils import noise_image_pil, psnr, ssim_score
-from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, haar_denoise, bm3d_denoise, CGNet, CGNetDenoise
+from methods import median_denoise, mean_denoise, total_variation_denoise, bilateral_denoise, wiener_denoise, haar_denoise, bm3d_denoise, CGNet, GANDenoise
 
 class Application(ctk.CTk):
     def __init__(self):
@@ -14,11 +14,12 @@ class Application(ctk.CTk):
         self.title("Denoisy")
         self.geometry("1920x1080")
         ctk.set_appearance_mode("Dark")
+        ctk.set_widget_scaling(2)
         self.image_path = None
         self.image = None
         self.image_bruitee = None
         self.image_debruitee = None
-        self.CGNetGAN = CGNetDenoise("_CGNet_BSD500/generator.pth")
+        self.GAN = GANDenoise("_CGNet_BSD500/generator.pth")
         self.nima_model = None
 
         self.grid_rowconfigure(0, weight=1)
@@ -28,11 +29,11 @@ class Application(ctk.CTk):
 
         # Conteneur global à gauche pour les boutons
         self.buttons_frame = ctk.CTkFrame(self)
-        self.buttons_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.buttons_frame.grid(row=0, column=0, rowspan=2, sticky="ns", padx=10, pady=10)
 
         # Conteneur global pour les métriques
         self.metrics_frame = ctk.CTkFrame(self)
-        self.metrics_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
+        self.metrics_frame.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
 
         # Labels pour les métriques
         self.label_psnr_bruitee = ctk.CTkLabel(self.metrics_frame, text="PSNR entre l'image originale et bruitée : N/A dB")
@@ -88,7 +89,7 @@ class Application(ctk.CTk):
         # Ajout d'un menu déroulant pour le choix du mode de détection
         self.mode_debruitage_var = tk.StringVar()
         self.mode_debruitage_var.set("Choisir le mode de débruitage")
-        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Ondelettes de Haar", "BM3D", "CGNet GAN"]
+        self.modes_debruitage = ["Filtre médian", "Filtre moyenneur", "Filtre bilatéral", "Filtre de Wiener", "Variation totale", "Ondelettes de Haar", "BM3D", "GAN"]
         self.menu_mode_detection = ctk.CTkOptionMenu(self.buttons_frame, variable=self.mode_debruitage_var, values=self.modes_debruitage, command=self.mode_selectionne)
         self.menu_mode_detection.grid(row=2, column=0, padx=5, pady=5, sticky='nsew')
 
@@ -214,7 +215,7 @@ class Application(ctk.CTk):
             case "BM3D":
                 self.sigma_psd_label.grid()
                 self.sigma_psd_slider.grid()
-            case "CGNet GAN":
+            case "GAN":
                 pass
 
     def choisir_image(self):
@@ -349,9 +350,8 @@ class Application(ctk.CTk):
                     self.image_debruitee = haar_denoise(self.image_bruitee, self.haar_threshold.get())
                 case "BM3D":
                     self.image_debruitee = bm3d_denoise(self.image_bruitee, self.sigma_psd.get())
-                case "CGNet GAN":
-                    self.image_debruitee = self.CGNetGAN.denoise(self.image_bruitee)
-
+                case "GAN":
+                    self.image_debruitee = self.GAN.denoise(self.image_bruitee)
 
         elif self.image_bruitee_var.get():
             match self.mode_debruitage_var.get():
@@ -369,8 +369,8 @@ class Application(ctk.CTk):
                     self.image_debruitee = haar_denoise(self.image, self.haar_threshold.get())
                 case "BM3D":
                     self.image_debruitee = bm3d_denoise(self.image, self.sigma_psd.get())
-                case "CGNet GAN":
-                    self.image_debruitee = self.CGNetGAN.denoise(self.image)
+                case "GAN":
+                    self.image_debruitee = self.GAN.denoise(self.image)
         
         if self.image_debruitee is not None:
             self.afficher_image(self.image_debruitee, self.canvas_image_debruitee)

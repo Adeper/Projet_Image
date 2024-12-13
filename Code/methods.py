@@ -6,6 +6,20 @@ from scipy.signal import wiener
 import pywt
 import torch
 import torch.nn as nn
+from pathlib import Path
+import os
+import sys
+from os import path as osp
+import numpy as np
+from basicsr.models import build_model
+from basicsr.utils import tensor2img
+import yaml
+from basicsr.utils.options import ordered_yaml
+from basicsr.train import parse_options
+from basicsr.utils import (get_env_info, get_root_logger, get_time_str,
+                           make_exp_dirs)
+import logging
+from basicsr.utils.options import dict2str
 
 # Filtre médian
 def median_denoise(image_noised, window_size=3):
@@ -187,7 +201,7 @@ class CGNet(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-class CGNetDenoise:
+class GANDenoise:
     def __init__(self, model_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self._load_model(model_path)
@@ -219,3 +233,47 @@ class CGNetDenoise:
         if output_image.ndim == 3:
             output_image = np.transpose(output_image, (1, 2, 0))
         return np.clip(output_image, 0, 1)
+
+# def yaml_load(f):
+#     with open(f, mode='r') as file:
+#         Loader, Dumper = ordered_yaml()
+#         return yaml.load(file, Loader=Loader)
+
+# class CGNetDenoise:
+#     def __init__(self, yml_path, model_path):
+#         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#         self.model = self._load_model(yml_path, model_path)
+
+#     def _load_model(self, yml_path, model_path):
+#         opt_path = Path(yml_path)
+#         opt = yaml_load(opt_path)
+#         opt['dist'] = False
+#         opt['is_train'] = False
+#         opt['path']['pretrain_network_g'] = model_path
+
+#         model = build_model(opt)
+#         model.net_g.to(self.device)
+#         model.net_g.eval()
+#         return model
+
+#     def denoise(self, image_noised):
+#         input_tensor = self._preprocess_image(image_noised).to(self.device)
+
+#         with torch.no_grad():
+#             output_tensor = self.model.net_g(input_tensor.unsqueeze(0))
+
+#         return self._postprocess_image(output_tensor.squeeze(0))
+
+#     def _preprocess_image(self, image):
+#         image = np.array(image, dtype=np.float32) / 255.0
+#         if image.ndim == 2:
+#             image = np.expand_dims(image, axis=0)
+#         else:
+#             image = np.transpose(image, (2, 0, 1))
+#         return torch.tensor(image, dtype=torch.float32)
+
+#     def _postprocess_image(self, output_tensor):
+#         output_image = output_tensor.cpu().numpy()
+#         if output_image.ndim == 3:
+#             output_image = np.transpose(output_image, (1, 2, 0))
+#         return np.clip(output_image, 0, 1)
